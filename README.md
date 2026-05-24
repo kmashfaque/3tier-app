@@ -1,223 +1,86 @@
-This project implements a classic 3-tier web architecture deployed on AWS EC2 instances within a VPC.
+﻿# 🚀 3-Tier AWS Architecture Deployment Guide
 
+This repository includes a Terraform-based implementation of a production-style 3-tier AWS architecture.
 
+## 📁 Repository Structure
 
-# 🚀 3-Tier AWS Architecture Deployment Guide
+```
+3-tier-aws-terraform/
+├── backend/
+├── frontend/
+├── terraform/
+│   ├── provider.tf
+│   ├── main.tf
+│   ├── variables.tf
+│   ├── vpc.tf
+│   ├── subnets.tf
+│   ├── igw.tf
+│   ├── nat.tf
+│   ├── route_tables.tf
+│   ├── security-groups.tf
+│   ├── ec2.tf
+│   ├── rds.tf
+│   ├── outputs.tf
+│   └── user_data/
+│       ├── bastion.sh
+│       ├── web.sh.tpl
+│       └── app.sh.tpl
+├── screenshots/
+└── README.md
+```
 
-This guide provides a comprehensive walkthrough for deploying a 3-tier application on AWS EC2, including a web server (Nginx), an application server (Node.js), and a database server (MySQL).
+## ⚙️ Terraform Deployment
 
----
+### Prerequisites
+- AWS CLI configured with the right credentials
+- Terraform >= 1.5
+- SSH public key available locally
+
+### Deploy Infrastructure
+
+```bash
+cd terraform
+terraform init
+terraform validate
+terraform plan
+terraform apply -auto-approve
+```
+
+### Important Outputs
+After apply, Terraform prints:
+- `web_public_ip`
+- `bastion_public_ip`
+- `app_private_ip`
+- `db_endpoint`
 
 ## 🏗️ Architecture Overview
 
-The application is structured into three distinct layers:
-1.  **Web Layer**: Nginx serving as a reverse proxy.
-2.  **App Layer**: Node.js backend processing logic.
-3.  **Data Layer**: MySQL database for persistent storage.
+The deployment creates:
+1. **Public Web Tier**: Nginx reverse proxy in the public subnet.
+2. **Private App Tier**: Node.js backend in a private subnet.
+3. **Private DB Tier**: RDS MySQL instance in an isolated DB subnet.
+4. **Bastion Host**: secure SSH access into the VPC.
+5. **Networking**: VPC, public/private/DB subnets, Internet Gateway, NAT Gateway, route tables.
 
----
+## 🔐 Security Model
 
-## 🛠️ Complete Deployment Commands
+- **Bastion SG**: SSH from the admin CIDR.
+- **Web SG**: HTTP from the internet + SSH from the admin CIDR.
+- **App SG**: Node.js traffic from the web tier + SSH from bastion.
+- **DB SG**: MySQL access only from the app tier.
 
-### 1️⃣ Connect to Web Server
-Establish a secure connection to your public-facing web server.
+## 🧩 How It Works
 
-```bash
-ssh -i absjm.pem ubuntu@WEB_SERVER_PUBLIC_IP
-```
-![Web Server Connection](screenshots/webserver_connection.png)
+- The web server serves the static frontend and proxies `/api` requests to the private app server.
+- The app server runs a Node.js Express backend that connects to RDS MySQL.
+- The database is only reachable from inside the VPC.
 
----
+## 📝 Notes
 
-### 2️⃣ Install Nginx on Web Server
-Update the system and install the Nginx web server to handle incoming traffic.
+- Update `terraform/variables.tf` before applying if you want to change region, SSH key path, or DB credentials.
+- The app server user data deploys a Node.js service under `/home/ubuntu/backend`.
+- The web server user data deploys the frontend and Nginx configuration automatically.
 
-```bash
-sudo apt update
-sudo apt install nginx -y
-```
-![Nginx Installation](screenshots/nginx_nstalltion.png)
-
-**Check Nginx Status:**
-```bash
-sudo systemctl status nginx
-```
-![Nginx Running](screenshots/nginx_running.png)
-
-**Management Commands:**
-```bash
-sudo systemctl enable nginx
-sudo systemctl restart nginx
-```
-
----
-
-### 3️⃣ Copy PEM File to App Server
-Securely transfer your private key to the application server to allow internal SSH access.
-
-```bash
-scp -i absjm.pem absjm.pem ubuntu@APP_SERVER_PRIVATE_IP:~
-```
-![Terminal Session](screenshots/terminal_ss1.png)
-
----
-
-### 4️⃣ Connect to App Server from Web Server
-Jump from the web server to the application server located in the private subnet.
-
-```bash
-chmod 400 absjm.pem
-ssh -i absjm.pem ubuntu@APP_SERVER_PRIVATE_IP
-```
-![App Server Connection](screenshots/appserver_connection.png)
-
----
-
-### 5️⃣ Install Node.js on App Server
-Set up the runtime environment for the backend application.
-
-```bash
-sudo apt update
-sudo apt install nodejs npm -y
-```
-
-**Verify Versions:**
-```bash
-node -v
-npm -v
-```
-![NodeJS Verification](screenshots/terminal_ss2.png)
-
----
-
-### 6️⃣ Create Backend Application
-Initialize the project and install necessary dependencies for the Express server.
-
-```bash
-mkdir backend
-cd backend
-npm init -y
-npm install express mysql2 cors
-nano app.js
-```
-
-**Run Backend:**
-```bash
-node app.js
-```
-![Backend Running](screenshots/backend_running.png)
-
----
-
-### 7️⃣ Connect to DB Server from App Server
-Move deeper into the architecture to configure the database layer.
-
-```bash
-ssh -i absjm.pem ubuntu@DB_SERVER_PRIVATE_IP
-```
-![DB Server Connection](screenshots/db_server_connection.png)
-
----
-
-### 8️⃣ Install MySQL on DB Server
-Deploy the MySQL database engine.
-
-```bash
-sudo apt update
-sudo apt install mysql-server -y
-```
-![MySQL Server Setup](screenshots/sql_server_setup.png)
-
----
-
-### 9️⃣ Configure MySQL Database
-Initialize the schema and set up user permissions.
-
-```sql
-CREATE DATABASE appdb;
-CREATE USER 'appuser'@'%' IDENTIFIED BY 'password';
-GRANT ALL PRIVILEGES ON appdb.* TO 'appuser'@'%';
-FLUSH PRIVILEGES;
-EXIT;
-```
-![SQL Commands](screenshots/sql_command.png)
-
----
-
-### 🔟 Enable Remote MySQL Access
-Configure MySQL to listen for connections from the application server.
-
-```bash
-sudo nano /etc/mysql/mysql.conf.d/mysqld.cnf
-```
-**Change:** `bind-address = 0.0.0.0`
-
-```bash
-sudo systemctl restart mysql
-```
-![DB Connection Check](screenshots/db_connection.png)
-
----
-
-### 1️⃣1️⃣ Configure Nginx Reverse Proxy
-Route `/api` traffic to the backend server and serve the frontend locally.
-
-```bash
-sudo nano /etc/nginx/sites-available/default
-```
-
-**Configuration Block:**
-```nginx
-server {
-    listen 80;
-    root /var/www/html;
-    index index.html;
-
-    location / {
-        try_files $uri /index.html;
-    }
-
-    location /api {
-        proxy_pass http://APP_SERVER_PRIVATE_IP:3000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-```
-
----
-
-### 1️⃣2️⃣ AWS Networking Configuration
-Proper route table configuration is critical for connectivity between subnets and the internet.
-
-#### Public Route Table
-`0.0.0.0/0 → Internet Gateway`
-
-#### Private Route Table
-`0.0.0.0/0 → NAT Gateway`
-
-![Networking Routes](screenshots/route.png)
-
----
-
-### 1️⃣3️⃣ Security Group Rules
-Strict firewall rules to ensure only authorized traffic flows between tiers.
-
-| Tier | Port | Source | Description |
-|------|------|--------|-------------|
-| **Web** | 80 | 0.0.0.0/0 | Public HTTP |
-| **Web** | 22 | My IP | Admin SSH |
-| **App** | 3000 | Web-SG | Backend API |
-| **App** | 22 | Web-SG | Internal SSH |
-| **DB** | 3306 | App-SG | MySQL Access |
-| **DB** | 22 | App-SG | Internal SSH |
-
----
-
-### ✅ Final Result
-Successfully deployed a resilient 3-tier application utilizing:
-- **AWS EC2** (Compute)
-- **Nginx** (Web Proxy)
-- **Node.js** (Backend)
-- **MySQL** (Database)
-- **Networking**: VPC, NAT Gateway, Internet Gateway, Route Tables, and Security Groups.
+## 🚀 Next Steps
+- Run `terraform destroy` to remove the infrastructure.
+- For production, replace the default database password and tighten `admin_cidr`.
