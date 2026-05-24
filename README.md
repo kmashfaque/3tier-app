@@ -1,7 +1,3 @@
-# 3tier-architecture-nginx
-
-## 🏛️ System Architecture
-
 This project implements a classic 3-tier web architecture deployed on AWS EC2 instances within a VPC.
 
 
